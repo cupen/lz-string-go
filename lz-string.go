@@ -12,6 +12,246 @@ import (
 //goland:noinspection SpellCheckingInspection
 const _defaultKeyStrBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 
+func CompressV2(uncompressed string, keyStrBase64 string) string {
+	if len(uncompressed) == 0 {
+		return ""
+	}
+	if keyStrBase64 == "" {
+		keyStrBase64 = _defaultKeyStrBase64
+	}
+	charArr := []rune(keyStrBase64)
+	res := _compressV2(uncompressed, 6, charArr)
+	switch len(res) % 4 {
+	case 3:
+		return res + "="
+	case 2:
+		return res + "=="
+	case 1:
+		return res + "==="
+	}
+	return res
+}
+
+func _compressV2(uncompressed string, bitsPerChar int, charArr []rune) string {
+	if len(uncompressed) == 0 {
+		return ""
+	}
+	var input = []rune(uncompressed)
+	var value int
+	contextDictionary := make(map[string]int)
+	contextDictionaryToCreate := make(map[string]bool)
+	var contextC string
+	var contextW string
+	var contextWc string
+	contextEnlargeIn := float64(2)
+	contextDictSize := 3
+	contextNumBits := 2
+	//var contextDataString string
+	var contextDataString = strings.Builder{}
+
+	contextDataVal := 0
+	contextDataPosition := 0
+
+	for ii := 0; ii < len(input); ii++ {
+		// log.Printf("ii=%d c=%s w=%s wc=%s", ii, contextC, contextW, contextWc)
+		contextC = string(input[ii])
+		if _, exists := contextDictionary[contextC]; !exists {
+			contextDictionary[contextC] = contextDictSize
+			contextDictSize++
+			contextDictionaryToCreate[contextC] = true
+		}
+		contextWc = contextW + contextC
+		if _, exists := contextDictionary[contextWc]; exists {
+			contextW = contextWc
+		} else {
+			_, in := contextDictionaryToCreate[contextW]
+			if in {
+				contextWRune := []rune(contextW)[0]
+				if contextWRune < 256 {
+					for i := 0; i < contextNumBits; i++ {
+						contextDataVal = contextDataVal << 1
+						if contextDataPosition == bitsPerChar-1 {
+							contextDataPosition = 0
+							contextDataString.WriteRune(charArr[contextDataVal])
+							contextDataVal = 0
+						} else {
+							contextDataPosition++
+						}
+					}
+					value = int(contextWRune)
+					for i := 0; i < 8; i++ {
+						contextDataVal = (contextDataVal << 1) | (value & 1)
+						if contextDataPosition == bitsPerChar-1 {
+							contextDataPosition = 0
+							contextDataString.WriteRune(charArr[contextDataVal])
+							contextDataVal = 0
+						} else {
+							contextDataPosition++
+						}
+						value = value >> 1
+					}
+				} else {
+					value = 1
+					for i := 0; i < contextNumBits; i++ {
+						contextDataVal = (contextDataVal << 1) | value
+						if contextDataPosition == bitsPerChar-1 {
+							contextDataPosition = 0
+							contextDataString.WriteRune(charArr[contextDataVal])
+							contextDataVal = 0
+						} else {
+							contextDataPosition++
+						}
+						value = 0
+					}
+					value = int(contextWRune)
+					for i := 0; i < 16; i++ {
+						contextDataVal = (contextDataVal << 1) | (value & 1)
+						if contextDataPosition == bitsPerChar-1 {
+							contextDataPosition = 0
+							contextDataString.WriteRune(charArr[contextDataVal])
+							contextDataVal = 0
+						} else {
+							contextDataPosition++
+						}
+						value = value >> 1
+					}
+				}
+				contextEnlargeIn--
+				if contextEnlargeIn == 0 {
+					contextEnlargeIn = math.Pow(2, float64(contextNumBits))
+					contextNumBits++
+				}
+				delete(contextDictionaryToCreate, contextW)
+			} else {
+				value = contextDictionary[contextW]
+				for i := 0; i < contextNumBits; i++ {
+					contextDataVal = (contextDataVal << 1) | (value & 1)
+					if contextDataPosition == bitsPerChar-1 {
+						contextDataPosition = 0
+						contextDataString.WriteRune(charArr[contextDataVal])
+						contextDataVal = 0
+					} else {
+						contextDataPosition++
+					}
+					value = value >> 1
+				}
+			}
+			contextEnlargeIn--
+			if contextEnlargeIn == 0 {
+				contextEnlargeIn = math.Pow(2, float64(contextNumBits))
+				contextNumBits++
+			}
+			contextDictionary[contextWc] = contextDictSize
+			contextDictSize++
+			contextW = contextC
+		}
+	}
+
+	if contextW != "" {
+		_, in := contextDictionaryToCreate[contextW]
+		if in {
+			contextWRune := int(contextW[0])
+			if contextWRune < 256 {
+				for i := 0; i < contextNumBits; i++ {
+					contextDataVal = contextDataVal << 1
+					if contextDataPosition == bitsPerChar-1 {
+						contextDataPosition = 0
+						contextDataString.WriteRune(charArr[contextDataVal])
+						contextDataVal = 0
+					} else {
+						contextDataPosition++
+					}
+				}
+				value = contextWRune
+				for i := 0; i < 8; i++ {
+					contextDataVal = (contextDataVal << 1) | (value & 1)
+					if contextDataPosition == bitsPerChar-1 {
+						contextDataPosition = 0
+						contextDataString.WriteRune(charArr[contextDataVal])
+						contextDataVal = 0
+					} else {
+						contextDataPosition++
+					}
+					value = value >> 1
+				}
+			} else {
+				value = 1
+				for i := 0; i < contextNumBits; i++ {
+					contextDataVal = (contextDataVal << 1) | value
+					if contextDataPosition == bitsPerChar-1 {
+						contextDataPosition = 0
+						contextDataString.WriteRune(charArr[contextDataVal])
+						contextDataVal = 0
+					} else {
+						contextDataPosition++
+					}
+					value = 0
+				}
+				value = contextWRune
+				for i := 0; i < 16; i++ {
+					contextDataVal = (contextDataVal << 1) | (value & 1)
+					if contextDataPosition == bitsPerChar-1 {
+						contextDataPosition = 0
+						contextDataString.WriteRune(charArr[contextDataVal])
+						contextDataVal = 0
+					} else {
+						contextDataPosition++
+					}
+					value = value >> 1
+				}
+			}
+			contextEnlargeIn--
+			if contextEnlargeIn == 0 {
+				contextEnlargeIn = math.Pow(2, float64(contextNumBits))
+				contextNumBits++
+			}
+			delete(contextDictionaryToCreate, contextW)
+		} else {
+			value = contextDictionary[contextW]
+			for i := 0; i < contextNumBits; i++ {
+				contextDataVal = (contextDataVal << 1) | (value & 1)
+				if contextDataPosition == bitsPerChar-1 {
+					contextDataPosition = 0
+					contextDataString.WriteRune(charArr[contextDataVal])
+					contextDataVal = 0
+				} else {
+					contextDataPosition++
+				}
+				value = value >> 1
+			}
+		}
+		contextEnlargeIn--
+		if contextEnlargeIn == 0 {
+			contextEnlargeIn = math.Pow(2, float64(contextNumBits))
+			contextNumBits++
+		}
+	}
+
+	value = 2
+	for i := 0; i < contextNumBits; i++ {
+		contextDataVal = (contextDataVal << 1) | (value & 1)
+		if contextDataPosition == bitsPerChar-1 {
+			contextDataPosition = 0
+			contextDataString.WriteRune(charArr[contextDataVal])
+			contextDataVal = 0
+		} else {
+			contextDataPosition++
+		}
+		value = value >> 1
+	}
+
+	for {
+		contextDataVal = contextDataVal << 1
+		if contextDataPosition == bitsPerChar-1 {
+			contextDataString.WriteRune(charArr[contextDataVal])
+			break
+		} else {
+			contextDataPosition++
+		}
+	}
+	return contextDataString.String()
+}
+
 func Compress(uncompressed string, keyStrBase64 string) string {
 	if len(uncompressed) == 0 {
 		return ""
@@ -20,7 +260,7 @@ func Compress(uncompressed string, keyStrBase64 string) string {
 		keyStrBase64 = _defaultKeyStrBase64
 	}
 	charArr := []rune(keyStrBase64)
-	res := _compress(uncompressed, 6, charArr)
+	res := _compressV2(uncompressed, 6, charArr)
 	switch len(res) % 4 {
 	case 3:
 		return res + "="
@@ -52,6 +292,7 @@ func _compress(uncompressed string, bitsPerChar int, charArr []rune) string {
 	contextDataPosition := 0
 
 	for ii := 0; ii < len(uncompressed); ii++ {
+		// log.Printf("c=%s w=%s wc=%s", contextC, contextW, contextWc)
 		contextC = string(uncompressed[ii])
 		_, in := contextDictionary[contextC]
 		if !in {
